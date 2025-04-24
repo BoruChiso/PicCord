@@ -1,0 +1,5 @@
+discord
+Pillow
+imagehash
+numpy
+python-dotenv
