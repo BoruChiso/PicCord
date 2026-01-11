@@ -154,7 +154,7 @@ class myUploader:
         self.chatroom = c
         return self
 
-    async def upload(self, files: list[discord.File], parameter: dict = None):
+    async def upload(self, files: list[discord.File], parameter: dict = {}):
         """画像をbotroomにアップロードし、chatroomに通知を送信します。
 
         このメソッドは、指定されたbotroomへの画像の処理とアップロードを行います。
@@ -192,7 +192,7 @@ class myUploader:
         #     smallheight = min(math.ceil(im.height / intensity),minlength)
         #     imsmall = im.resize((smallheight, math.ceil(im.width / im.height * smallheight)))
         # blur:Image = imsmall.resize((im.width,im.height),resample=Image.Resampling.NEAREST).filter(ImageFilter.GaussianBlur(100)).point(lambda x:x*0.5)
-        blur: Image = im.filter(ImageFilter.GaussianBlur(100))
+        blur: Image.Image = im.filter(ImageFilter.GaussianBlur(100))
         blurfile = image2file(blur)
 
         if parameter:
@@ -259,21 +259,21 @@ class myViewforUploadImage(discord.ui.View):
     #     self.uploader.setSendChannel(ctx.guild.get_channel(select.values[0].id))
     #     await ctx.response.defer()
 
-    @discord.ui.select(
-        cls=discord.ui.Select,
-        options=[
-            discord.SelectOption(
-                label="投稿後、元画像を自動で削除する", value="True", default=True
-            ),
-            discord.SelectOption(
-                label="投稿後、元画像を自動で削除しない", value="False"
-            ),
-        ],
-        placeholder="元画像を削除しますか？",
-    )
+    # @discord.ui.select(
+    #     cls=discord.ui.Select,
+    #     options=[
+    #         discord.SelectOption(
+    #             label="投稿後、元画像を自動で削除する", value="True", default=True
+    #         ),
+    #         discord.SelectOption(
+    #             label="投稿後、元画像を自動で削除しない", value="False"
+    #         ),
+    #     ],
+    #     placeholder="元画像を削除しますか？",
+    # )
     async def delete(self, ctx: discord.Interaction, select: discord.ui.Select):
         if ctx.user.id != self.original_message.author.id:
-            ctx.response.send_message(
+            await ctx.response.send_message(
                 content=None,
                 embed=discord.Embed(title="エラー", color=0xFF0000).add_field(
                     name="警告", value="この操作は投稿者にしか行えません。"
@@ -289,7 +289,7 @@ class myViewforUploadImage(discord.ui.View):
     @discord.ui.button(style=discord.ButtonStyle.secondary, label="投稿する")
     async def upload(self, ctx: discord.Interaction, select: discord.ui.Button):
         if ctx.user.id != self.original_message.author.id:
-            ctx.response.send_message(
+            await ctx.response.send_message(
                 content=None,
                 embed=discord.Embed(title="エラー", color=0xFF0000).add_field(
                     name="警告", value="この操作は投稿者にしか行えません。"
