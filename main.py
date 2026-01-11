@@ -455,7 +455,7 @@ class MyHashMap:
 
 
 async def createMyUploader(
-    id_botroom: str, id_chatroom: str, ctx: discord.interactions
+    id_botroom: str, id_chatroom: str, ctx: discord.interactions.Interaction
 ):
     botroom: discord.TextChannel = await ctx.guild.fetch_channel(id_botroom)
     chatroom: discord.TextChannel = await ctx.guild.fetch_channel(id_chatroom)
@@ -578,6 +578,7 @@ async def on_interaction(ctx: discord.Interaction):
             #     await processButtonclickImageRemoveNo(ctx,d)
         except Exception as e:
             print(traceback.format_exc())
+            print(e)
             pass
 
 
