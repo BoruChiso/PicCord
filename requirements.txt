@@ -3,3 +3,4 @@ Pillow
 imagehash
 numpy
 python-dotenv
+memory-profiler

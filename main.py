@@ -1,13 +1,15 @@
 import discord
-import sys, os
+import os
 import json
 from io import BytesIO
 from PIL import Image, ImageFilter
 import imagehash
 from dotenv import load_dotenv
-import math
+
+# import math
 from myCrypter import myCrypter
-import traceback
+
+# import traceback
 import gc
 from memory_profiler import profile
 
@@ -482,49 +484,6 @@ def image2file(image: Image.Image) -> discord.File:
     return file
 
 
-####################
-
-# @tree.command(
-#     name="upload",  # コマンド名
-#     description="画像のアップロード",  # コマンドの説明
-
-# )
-# async def upload(ctx: discord.Interaction, attachment: discord.Attachment, comment:str):
-#     await ctx.response.defer(ephemeral = True)
-#     sys.stdout.write("アップロードする\n")
-#     myuploader = await createMyUploader(ID_ROOM_BOT,ID_ROOM_SHOMIN,ctx)
-#     myuploader.setComment(comment).setTitle(f"{ctx.user.display_name}さんの画像がアップロードされました").setAuthor(str(ctx.user.id))
-#     file = await attachment.to_file()
-#     await myuploader.upload(file)
-#     await ctx.followup.send(content="送信しました。")
-
-
-# @tree.command(
-#     name="decrypt",  # コマンド名
-#     description="画像認識",  # コマンドの説明
-# )
-# async def decrypt(ctx: discord.Interaction, attachment_encrypted: discord.Attachment, attachment_original: discord.Attachment):
-#     sys.stdout.write("確認する\n")
-#     await ctx.response.defer()
-#     mycrypter = myCrypter()
-#     file_en:discord.File = await attachment_encrypted.to_file()
-#     file_or:discord.File = await attachment_original.to_file()
-#     im_en = file2image(file_en)
-#     im_or = file2image(file_or)
-#     im_decrypt = mycrypter.decrypt(im_en,im_or)
-#     await ctx.followup.send(file=image2file(im_decrypt),ephemeral=True)
-
-# @tree.command(
-#     name="testbutton", #テストボタン
-#     description="テストボタン作成"
-# )
-# async def testbutton(ctx:discord.Interaction):
-#     button = discord.ui.Button(label="check",style=discord.ButtonStyle.primary,custom_id='{{"id":"check","user":"{0}"}}'.format(ctx.user.display_name))
-#     view = discord.ui.View()
-#     view.add_item(button)
-#     await ctx.response.send_message("テストボタンだよ",view=view)
-
-
 @client.event
 async def on_message(msg: discord.Message):
     if msg.author.bot:
@@ -559,27 +518,24 @@ async def on_interaction(ctx: discord.Interaction):
         d = ctx.data.get("custom_id")
         try:
             d = json.loads(d)
-            print(d)
-            if d.get("id") == "check":
-                await ctx.response.send_message(
-                    "{}さん、こんにちは！".format(ctx.user.display_name)
-                )
-            if d.get("id") == str(
-                INTER_ID_BUTTONCLICK_IMAGEVIEW
-            ):  # buttonclick_imageview
-                await processButtonclickImageView(ctx, d.get("thread_id"))
-            if d.get("id") == str(
-                INTER_ID_BUTTONCLICK_IMAGEREMOVE
-            ):  # buttonclick_imageremove
-                await processButtonclickImageRemove(ctx, d)
-            # if d.get("id") == str(INTER_ID_BUTTONCLICK_IMAGEREMOVEYES):
-            #     await processButtonclickImageRemoveYes(ctx,d)
-            # if d.get("id") == str(INTER_ID_BUTTONCLICK_IMAGEREMOVENO):
-            #     await processButtonclickImageRemoveNo(ctx,d)
-        except Exception as e:
-            print(traceback.format_exc())
-            print(e)
-            pass
+        except json.JSONDecodeError:
+            return  # JSON形式でない場合はスキップ（コールバックメソッドが処理）
+
+        print(d)
+        if d.get("id") == "check":
+            await ctx.response.send_message(
+                "{}さん、こんにちは！".format(ctx.user.display_name)
+            )
+        if d.get("id") == str(INTER_ID_BUTTONCLICK_IMAGEVIEW):  # buttonclick_imageview
+            await processButtonclickImageView(ctx, d.get("thread_id"))
+        if d.get("id") == str(
+            INTER_ID_BUTTONCLICK_IMAGEREMOVE
+        ):  # buttonclick_imageremove
+            await processButtonclickImageRemove(ctx, d)
+        # if d.get("id") == str(INTER_ID_BUTTONCLICK_IMAGEREMOVEYES):
+        #     await processButtonclickImageRemoveYes(ctx,d)
+        # if d.get("id") == str(INTER_ID_BUTTONCLICK_IMAGEREMOVENO):
+        #     await processButtonclickImageRemoveNo(ctx,d)
 
 
 @profile
@@ -749,11 +705,6 @@ async def processButtonclickImageRemove(ctx: discord.Interaction, prm: dict):
         await ctx.response.send_message(
             "本当に削除しますか？", view=view, ephemeral=True
         )
-
-
-# async def processButtonclickImageRemoveYes(ctx:discord.Interaction, prm:dict):
-#     msg = prm.get("messagedeleteid")
-#     await ctx.guild.fetch
 
 
 # @profile
