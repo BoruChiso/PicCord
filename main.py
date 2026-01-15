@@ -5,13 +5,31 @@ from io import BytesIO
 from PIL import Image, ImageFilter
 import imagehash
 from dotenv import load_dotenv
-
-# import math
-from myCrypter import myCrypter
-
-# import traceback
 import gc
 from memory_profiler import profile
+
+from myCrypter import myCrypter
+from constants import (
+    MASKBIT_ROW,
+    MASKBIT_COLUMN,
+    MASKBIT_LENGTH_NUM,
+    MASKBIT_LENGTH_CHECKSUM,
+    ID_MAX,
+    MASK_BASE,
+    MASK_COLOR,
+    TEXT_COLOR,
+    INTER_ID_BUTTONCLICK_IMAGEVIEW,
+    INTER_ID_BUTTONCLICK_IMAGEREMOVE,
+    INTER_ID_BUTTONCLICK_IMAGEREMOVEYES,
+    INTER_ID_BUTTONCLICK_IMAGEREMOVENO,
+    EMOJI_BUTTON_PREVIOUS,
+    EMOJI_BUTTON_NEXT,
+    EMOJI_EYES,
+    EMOJI_TRASHCAN,
+    KEY_ID,
+    KEY_THREAD_ID,
+    KEY_AUTHOR_ID,
+)
 
 # 開発時に環境変数をロード
 try:
@@ -23,28 +41,6 @@ TOKEN = os.getenv("TOKEN")
 ID_ROOM_BOT = int(os.getenv("ID_ROOM_BOT"))
 ID_ROOM_VIEW = int(os.getenv("ID_ROOM_SHOMIN"))  # 投稿された画像が表示される
 ID_ROOM_PIC = int(os.getenv("ID_ROOM_PIC"))  # 投稿する画像を投稿する
-
-
-INTER_ID_BUTTONCLICK_IMAGEVIEW = 2
-INTER_ID_BUTTONCLICK_IMAGEREMOVE = 3
-INTER_ID_BUTTONCLICK_IMAGEREMOVEYES = 4
-INTER_ID_BUTTONCLICK_IMAGEREMOVENO = 5
-
-EMOJI_BUTTON_PREVIOUS = "\N{BLACK LEFT-POINTING TRIANGLE}"
-EMOJI_BUTTON_NEXT = "\N{BLACK RIGHT-POINTING TRIANGLE}"
-EMOJI_EYES = "\N{EYES}"
-EMOJI_TRASHCAN = "\N{WASTEBASKET}"
-
-MASKBIT_ROW = 4
-MASKBIT_COLUMN = 5
-MASKBIT_LENGTH_NUM = 16
-MASKBIT_LENGTH_CHECKSUM = 4
-
-ID_MAX = 2**MASKBIT_LENGTH_NUM
-
-MASK_BASE = 0
-MASK_COLOR = 2
-TEXT_COLOR = 64
 
 # discord.pyの処理
 

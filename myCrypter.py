@@ -2,20 +2,18 @@ from __future__ import annotations
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import textwrap
-from myImageConcater import concateImage
 import datetime
 
-
-MASKBIT_ROW = 4
-MASKBIT_COLUMN = 5
-MASKBIT_LENGTH_NUM = 16
-MASKBIT_LENGTH_CHECKSUM = 4
-
-ID_MAX = 2**MASKBIT_LENGTH_NUM
-
-MASK_BASE = 0
-MASK_COLOR = 1
-TEXT_COLOR = 64
+from myImageConcater import concateImage
+from constants import (
+    MASKBIT_ROW,
+    MASKBIT_COLUMN,
+    MASKBIT_LENGTH_NUM,
+    MASKBIT_LENGTH_CHECKSUM,
+    MASK_BASE,
+    MASK_COLOR,
+    TEXT_COLOR,
+)
 
 
 class myCrypter:
