@@ -538,119 +538,56 @@ async def on_interaction(ctx: discord.Interaction):
 async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
     await ctx.response.send_message("画像を送信しています...", ephemeral=True)
     thread = client.get_channel(thread_id)
+
+    # 元画像を取得
     async for m in thread.history(oldest_first=True, limit=1):
         files = [await a.to_file() for a in m.attachments]
+
     hash = myhashmap.hash(ctx.user.id)
-    encryptedfiles = []
-    attachmenturls = []
-    content = ""
-    msg: discord.Message
 
-    class ImageSelect(discord.ui.Select):
-        def __init__(
-            self, images: list, orgctx: discord.Interaction, timeout=180, images_num=1
-        ):
-            super().__init__(
-                placeholder="表示する画像を選択してください",
-                options=[
-                    discord.SelectOption(label="{}".format(i + 1), value=i)
-                    for i in range(images_num)
-                ],
-            )
-            self.images = images
-            self.orgctx = orgctx
-            self.images_num = images_num
+    # 既にキャッシュがあるかチェック
+    async for m in thread.history(limit=None):
+        if m.content == str(ctx.user.id):
+            print("ALLOK - Using cached images")
+            # キャッシュがある場合は既存の添付ファイルを再送信
+            embed = discord.Embed(color=0x00DD00, title="画像を表示します")
+            embed.add_field(name="画像数", value=f"{len(m.attachments)}枚")
+            cached_files = [await a.to_file() for a in m.attachments]
+            await ctx.edit_original_response(content=None, embed=embed, attachments=cached_files)
+            return
 
-        def setImage(self, images: list):
-            self.images = images
+    # キャッシュがない場合は暗号化して送信
+    embed = discord.Embed(color=0x00DD00, title="画像を表示します")
+    embed.add_field(name="読み込み中", value="暗号化処理中...")
+    await ctx.edit_original_response(content=None, embed=embed)
 
-        async def callback(self, ctx: discord.Interaction):
-            await ctx.response.defer(ephemeral=True, thinking=False)
-            embed1 = discord.Embed(color=0x00DD00, title="画像を表示します")
-            i = int(ctx.data.get("values")[0])
-            embed1.set_footer(text="{}/{}".format(i + 1, len(files)))
-            try:
-                embed1.set_image(url=self.images[i])
-            except Exception as e:
-                print(e)
-                embed1.add_field(name="読み込み中", value=" ")
-            await self.orgctx.edit_original_response(embed=embed1)
-            print("hogecallback")
-
-    view = discord.ui.View(timeout=240)
-    if len(files) > 1:
-        select = ImageSelect(images=attachmenturls, orgctx=ctx, images_num=len(files))
-        # select = discord.ui.Select()
-        # select.add_option(label="yeaheya")
-        view.add_item(select)
-        embed1 = discord.Embed(color=0x00DD00, title="画像を表示します")
-        embed1.set_footer(text="1/{}".format(len(files)))
-
-        await ctx.edit_original_response(content=None, embed=embed1, view=view)
-
-        async for m in thread.history(limit=None):
-            if m.content == str(ctx.user.id):
-                print("ALLOK")
-                select.setImage(list(map(lambda a: a.url, m.attachments)))
-                return
-
-        for i, file in enumerate(files):
-            filename = file.filename
-            mycrypter = myCrypter(file2image(file))
-            print(i)
-            mycrypter.setChannel([True, False, False, True]).encryptByID(
-                hash
-            ).setChannel([False, False, True, True]).encryptByLabel(
-                ctx.user.name
-            ).encryptByTime()
-            encryptedfile = image2file(mycrypter.executeEncryption())
-            encryptedfile.filename = filename
-            print(str(i) + "hoge")
-            encryptedfiles.append(encryptedfile)
-
-            if i == 0:
-                msg: discord.Message = await thread.send(
-                    content=str(ctx.user.id), files=encryptedfiles
-                )
-            else:
-                msg = await msg.add_files(encryptedfile)
-
-            select.setImage(list(map(lambda a: a.url, msg.attachments)))
-        ### メモリ利用削減 ###
-        del encryptedfiles
-        del encryptedfile
-        gc.collect()
-    else:
-        embed1 = discord.Embed(color=0x00DD00, title="画像を表示します")
-        embed1.add_field(name="読み込み中", value=" ")
-        await ctx.edit_original_response(content=None, embed=embed1, view=view)
-        async for m in thread.history(limit=None):
-            if m.content == str(ctx.user.id):
-                print("ALLOK")
-                embed1.set_image(url=m.attachments[0].url)
-                await ctx.edit_original_response(content=None, embed=embed1, view=view)
-                return
-
-        file = files[0]
+    encrypted_files = []
+    for i, file in enumerate(files):
         mycrypter = myCrypter(file2image(file))
+        print(f"Encrypting image {i+1}/{len(files)}")
         mycrypter.setChannel([True, False, False, True]).encryptByID(hash).setChannel(
             [False, False, True, True]
         ).encryptByLabel(ctx.user.name).encryptByTime()
-        encryptedfile = image2file(mycrypter.executeEncryption())
-        encryptedfile.filename = file.filename
-        print(str(0) + "hoge")
-        msg: discord.Message = await thread.send(
-            content=str(ctx.user.id), file=encryptedfile
-        )
+        encrypted_file = image2file(mycrypter.executeEncryption())
+        encrypted_file.filename = file.filename
+        encrypted_files.append(encrypted_file)
 
-        embed1.set_image(url=msg.attachments[0].url)
-        await ctx.edit_original_response(content=None, embed=embed1, view=view)
-        ### メモリ利用料削減 ###
-        del encryptedfile
-        gc.collect()
+    # スレッドに保存
+    msg: discord.Message = await thread.send(content=str(ctx.user.id), files=encrypted_files)
+
+    # ユーザーに送信（Discordの仕様上、一度送信したFileオブジェクトは再利用不可のため再取得）
+    embed = discord.Embed(color=0x00DD00, title="画像を表示します")
+    embed.add_field(name="画像数", value=f"{len(encrypted_files)}枚")
+    cached_files = [await a.to_file() for a in msg.attachments]
+    await ctx.edit_original_response(content=None, embed=embed, attachments=cached_files)
 
     myhashmap.put(hash, ctx.user.id)
     print(f"view id->{hash}")
+
+    # メモリ解放
+    del encrypted_files
+    del cached_files
+    gc.collect()
 
 
 # @profile
