@@ -4,3 +4,6 @@ imagehash
 numpy
 python-dotenv
 memory-profiler
+asyncpg 
+pytest 
+pytest-asyncio
