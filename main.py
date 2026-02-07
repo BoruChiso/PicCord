@@ -8,13 +8,15 @@ from dotenv import load_dotenv
 import gc
 from memory_profiler import profile
 
+import asyncpg
+
+from db import UserIdMapper
 from myCrypter import myCrypter
 from constants import (
     MASKBIT_ROW,
     MASKBIT_COLUMN,
     MASKBIT_LENGTH_NUM,
     MASKBIT_LENGTH_CHECKSUM,
-    ID_MAX,
     MASK_BASE,
     MASK_COLOR,
     TEXT_COLOR,
@@ -41,6 +43,9 @@ TOKEN = os.getenv("TOKEN")
 ID_ROOM_BOT = int(os.getenv("ID_ROOM_BOT"))
 ID_ROOM_VIEW = int(os.getenv("ID_ROOM_SHOMIN"))  # 投稿された画像が表示される
 ID_ROOM_PIC = int(os.getenv("ID_ROOM_PIC"))  # 投稿する画像を投稿する
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+user_id_mapper: UserIdMapper = None
 
 # discord.pyの処理
 
@@ -372,15 +377,14 @@ class myButtonforImageView(discord.ui.Button):
         async for m in self.thread.history(oldest_first=True, limit=1):
             file = await m.attachments[0].to_file()
         mycrypter = myCrypter(file2image(file))
-        hash = myhashmap.hash(interaction.user.id)
-        mycrypter.setChannel([True, False, False, True]).encryptByID(hash).setChannel(
+        internal_id = await user_id_mapper.get_or_create_internal_id(interaction.user.id)
+        mycrypter.setChannel([True, False, False, True]).encryptByID(internal_id).setChannel(
             [False, False, True, True]
         ).encryptByLabel(interaction.user.name)
         encryptedfile = image2file(mycrypter.executeEncryption())
         msg: discord.Message = await self.thread.send(file=encryptedfile)
         await interaction.edit_original_response(content=msg.attachments[0].url)
-        myhashmap.put(hash, interaction.user.id)
-        print(f"view id->{hash}")
+        print(f"view id->{internal_id}")
 
 
 class myButtonforImageViewbyUrl(discord.ui.Button):
@@ -416,37 +420,6 @@ class myTextInputforUploadComment(discord.ui.TextInput):
         super().__init__(
             label="コメント", placeholder="画像に添付するコメントを入力してください。"
         )
-
-
-class MyHashMap:
-    def __init__(self, capacity=ID_MAX):
-        self.capacity = capacity
-        self.buckets = [[] for _ in range(capacity)]
-
-    def hash(self, key):
-        return key % self.capacity
-
-    def put(self, key: int, value: int) -> None:
-        bucket_index = self.hash(key)
-        for i, (k, v) in enumerate(self.buckets[bucket_index]):
-            if key == k:
-                self.buckets[bucket_index][i] = (key, value)
-                return
-        self.buckets[bucket_index].append((key, value))
-
-    def get(self, key: int) -> int:
-        bucket_index = self.hash(key)
-        for i, (k, v) in enumerate(self.buckets[bucket_index]):
-            if key == k:
-                return v
-        return -1
-
-    def remove(self, key: int) -> None:
-        bucket_index = self.hash(key)
-        for i, (k, v) in enumerate(self.buckets[bucket_index]):
-            if key == k:
-                del self.buckets[bucket_index][i]
-                return
 
 
 ####################
@@ -543,7 +516,7 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
     async for m in thread.history(oldest_first=True, limit=1):
         files = [await a.to_file() for a in m.attachments]
 
-    hash = myhashmap.hash(ctx.user.id)
+    internal_id = await user_id_mapper.get_or_create_internal_id(ctx.user.id)
 
     # 既にキャッシュがあるかチェック
     async for m in thread.history(limit=None):
@@ -565,7 +538,7 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
     for i, file in enumerate(files):
         mycrypter = myCrypter(file2image(file))
         print(f"Encrypting image {i+1}/{len(files)}")
-        mycrypter.setChannel([True, False, False, True]).encryptByID(hash).setChannel(
+        mycrypter.setChannel([True, False, False, True]).encryptByID(internal_id).setChannel(
             [False, False, True, True]
         ).encryptByLabel(ctx.user.name).encryptByTime()
         encrypted_file = image2file(mycrypter.executeEncryption())
@@ -581,8 +554,7 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
     cached_files = [await a.to_file() for a in msg.attachments]
     await ctx.edit_original_response(content=None, embed=embed, attachments=cached_files)
 
-    myhashmap.put(hash, ctx.user.id)
-    print(f"view id->{hash}")
+    print(f"view id->{internal_id}")
 
     # メモリ解放
     del encrypted_files
@@ -651,12 +623,14 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.user):
 # @profile
 @client.event
 async def on_ready():
+    global user_id_mapper
     print("ready")
+    pool = await asyncpg.create_pool(DATABASE_URL)
+    user_id_mapper = UserIdMapper(pool)
+    await user_id_mapper.init()
+    print("DB connected")
     await tree.sync()
     print("ready")
-
-
-myhashmap = MyHashMap()
 
 
 # @profile

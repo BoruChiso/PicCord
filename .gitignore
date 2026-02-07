@@ -163,3 +163,10 @@ cython_debug/
 
 claude.md
 .claude/
+
+# uv
+uvicorn.log
+*.log
+*.sqlite3
+.DS_Store
+.vscode/
