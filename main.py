@@ -481,6 +481,22 @@ async def processImageUpload(msg: discord.Message, ctx: discord.Interaction = No
         await msg.reply(content="画像を投稿します。", view=components)
 
 
+_GALLERY_URL = "https://discord.com"
+
+
+def _build_gallery_embeds(attachments) -> list[discord.Embed]:
+    """同一 url を持つ embeds を返す。Discord がギャラリー1カードに束ねる。"""
+    embeds = []
+    for i, a in enumerate(attachments):
+        e = discord.Embed(color=0x00DD00, url=_GALLERY_URL)
+        if i == 0:
+            e.title = "画像を表示します"
+            e.add_field(name="画像数", value=f"{len(attachments)}枚")
+        e.set_image(url=a.url)
+        embeds.append(e)
+    return embeds
+
+
 # @profile
 @client.event
 async def on_interaction(ctx: discord.Interaction):
@@ -536,9 +552,7 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
     if cached_msg is not None:
         print("ALLOK - Using cached images")
         async with AsyncStageTimer("view/cache_hit_download_and_send"):
-            embeds = [discord.Embed(color=0x00DD00).set_image(url=a.url) for a in cached_msg.attachments]
-            embeds[0].title = "画像を表示します"
-            embeds[0].add_field(name="画像数", value=f"{len(cached_msg.attachments)}枚")
+            embeds = _build_gallery_embeds(cached_msg.attachments)
             await ctx.edit_original_response(content=None, embeds=embeds)
         total.stop()
         return
@@ -569,9 +583,7 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
         msg: discord.Message = await thread.send(content=str(ctx.user.id), files=encrypted_files)
 
     async with AsyncStageTimer("view/discord_edit_response"):
-        embeds = [discord.Embed(color=0x00DD00).set_image(url=a.url) for a in msg.attachments]
-        embeds[0].title = "画像を表示します"
-        embeds[0].add_field(name="画像数", value=f"{len(msg.attachments)}枚")
+        embeds = _build_gallery_embeds(msg.attachments)
         await ctx.edit_original_response(content=None, embeds=embeds)
 
     print(f"view id->{internal_id}")
