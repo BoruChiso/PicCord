@@ -568,12 +568,11 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
     async with AsyncStageTimer("view/discord_upload_encrypted"):
         msg: discord.Message = await thread.send(content=str(ctx.user.id), files=encrypted_files)
 
-    embed = discord.Embed(color=0x00DD00, title="画像を表示します")
-    embed.add_field(name="画像数", value=f"{len(encrypted_files)}枚")
     async with AsyncStageTimer("view/discord_edit_response"):
-        for f in encrypted_files:
-            f.fp.seek(0)
-        await ctx.edit_original_response(content=None, embed=embed, attachments=encrypted_files)
+        embeds = [discord.Embed(color=0x00DD00).set_image(url=a.url) for a in msg.attachments]
+        embeds[0].title = "画像を表示します"
+        embeds[0].add_field(name="画像数", value=f"{len(msg.attachments)}枚")
+        await ctx.edit_original_response(content=None, embeds=embeds)
 
     print(f"view id->{internal_id}")
     total.stop()
