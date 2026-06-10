@@ -10,7 +10,7 @@ from memory_profiler import profile
 
 import asyncpg
 
-from db import UserIdMapper
+from db import UserIdMapper, ImageCacheMapper
 from myCrypter import myCrypter
 from perf import StageTimer, AsyncStageTimer, TotalTimer
 from constants import (
@@ -47,6 +47,7 @@ ID_ROOM_PIC = int(os.getenv("ID_ROOM_PIC"))  # 投稿する画像を投稿する
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 user_id_mapper: UserIdMapper = None
+image_cache_mapper: ImageCacheMapper = None
 
 # discord.pyの処理
 
@@ -533,31 +534,28 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
     await ctx.response.send_message("画像を送信しています...", ephemeral=True)
     thread = client.get_channel(thread_id)
 
-    # 元画像を取得
-    async with AsyncStageTimer("view/discord_download_original"):
-        async for m in thread.history(oldest_first=True, limit=1):
-            files = [await a.to_file() for a in m.attachments]
-
     async with AsyncStageTimer("view/db_lookup"):
         internal_id = await user_id_mapper.get_or_create_internal_id(ctx.user.id)
 
-    # 既にキャッシュがあるかチェック
-    async with AsyncStageTimer("view/cache_history_scan"):
-        cached_msg = None
-        async for m in thread.history(limit=None):
-            if m.content == str(ctx.user.id):
-                cached_msg = m
-                break
+    # キャッシュ確認 O(1)
+    async with AsyncStageTimer("view/cache_db_lookup"):
+        cached_message_id = await image_cache_mapper.get_message_id(thread_id, internal_id)
 
-    if cached_msg is not None:
+    if cached_message_id is not None:
         print("ALLOK - Using cached images")
-        async with AsyncStageTimer("view/cache_hit_download_and_send"):
+        async with AsyncStageTimer("view/cache_hit_fetch_and_send"):
+            cached_msg = await thread.fetch_message(cached_message_id)
             embeds = _build_gallery_embeds(cached_msg.attachments)
             await ctx.edit_original_response(content=None, embeds=embeds)
         total.stop()
         return
 
-    # キャッシュがない場合は暗号化して送信
+    # キャッシュなし: 元画像取得
+    async with AsyncStageTimer("view/discord_download_original"):
+        async for m in thread.history(oldest_first=True, limit=1):
+            files = [await a.to_file() for a in m.attachments]
+
+    # 暗号化処理
     embed = discord.Embed(color=0x00DD00, title="画像を表示します")
     embed.add_field(name="読み込み中", value="暗号化処理中...")
     await ctx.edit_original_response(content=None, embed=embed)
@@ -580,7 +578,9 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
 
     # スレッドに保存してユーザーに送信
     async with AsyncStageTimer("view/discord_upload_encrypted"):
-        msg: discord.Message = await thread.send(content=str(ctx.user.id), files=encrypted_files)
+        msg: discord.Message = await thread.send(content=str(internal_id), files=encrypted_files)
+
+    await image_cache_mapper.set_message_id(thread_id, internal_id, msg.id)
 
     async with AsyncStageTimer("view/discord_edit_response"):
         embeds = _build_gallery_embeds(msg.attachments)
@@ -655,11 +655,13 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.user):
 # @profile
 @client.event
 async def on_ready():
-    global user_id_mapper
+    global user_id_mapper, image_cache_mapper
     print("ready")
     pool = await asyncpg.create_pool(DATABASE_URL)
     user_id_mapper = UserIdMapper(pool)
     await user_id_mapper.init()
+    image_cache_mapper = ImageCacheMapper(pool)
+    await image_cache_mapper.init()
     print("DB connected")
     await tree.sync()
     print("ready")

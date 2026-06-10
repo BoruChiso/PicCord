@@ -92,3 +92,43 @@ class UserIdMapper:
         if row is None:
             return None
         return row["discord_user_id"]
+
+
+class ImageCacheMapper:
+    """スレッドごと・ユーザーごとの暗号化済み画像キャッシュをPostgreSQLで管理する。
+
+    thread.history() O(n)走査の代替。(thread_id, internal_id) → message_id のO(1)ルックアップ。
+    """
+
+    def __init__(self, pool: asyncpg.Pool):
+        self._pool = pool
+
+    async def init(self):
+        await self._pool.execute("""
+            CREATE TABLE IF NOT EXISTS image_cache (
+                thread_id BIGINT NOT NULL,
+                internal_id INTEGER NOT NULL,
+                message_id BIGINT NOT NULL,
+                PRIMARY KEY (thread_id, internal_id)
+            )
+        """)
+
+    async def get_message_id(self, thread_id: int, internal_id: int) -> Optional[int]:
+        row = await self._pool.fetchrow(
+            "SELECT message_id FROM image_cache WHERE thread_id = $1 AND internal_id = $2",
+            thread_id,
+            internal_id,
+        )
+        return row["message_id"] if row is not None else None
+
+    async def set_message_id(self, thread_id: int, internal_id: int, message_id: int) -> None:
+        await self._pool.execute(
+            """
+            INSERT INTO image_cache (thread_id, internal_id, message_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (thread_id, internal_id) DO UPDATE SET message_id = EXCLUDED.message_id
+            """,
+            thread_id,
+            internal_id,
+            message_id,
+        )

@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 import asyncpg
 
-from db import UserIdMapper
+from db import UserIdMapper, ImageCacheMapper
 
 DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -86,3 +86,48 @@ async def test_many_users_no_collision(mapper):
         internal_id = await mapper.get_or_create_internal_id(base_id + i)
         ids.add(internal_id)
     assert len(ids) == 100
+
+
+@pytest_asyncio.fixture
+async def cache_mapper():
+    pool = await asyncpg.create_pool(DATABASE_URL)
+    m = ImageCacheMapper(pool)
+    await m.init()
+    yield m
+    await pool.execute("DELETE FROM image_cache")
+    await pool.close()
+
+
+@pytest.mark.asyncio
+async def test_get_message_id_not_found(cache_mapper):
+    """未登録の(thread_id, internal_id)はNoneを返すこと"""
+    result = await cache_mapper.get_message_id(999, 0)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_set_and_get_message_id(cache_mapper):
+    """set後にgetで同じmessage_idが返ること"""
+    await cache_mapper.set_message_id(111, 1, 9999999999)
+    result = await cache_mapper.get_message_id(111, 1)
+    assert result == 9999999999
+
+
+@pytest.mark.asyncio
+async def test_set_message_id_upsert(cache_mapper):
+    """同じ(thread_id, internal_id)に再setすると上書きされること"""
+    await cache_mapper.set_message_id(222, 2, 1111111111)
+    await cache_mapper.set_message_id(222, 2, 2222222222)
+    result = await cache_mapper.get_message_id(222, 2)
+    assert result == 2222222222
+
+
+@pytest.mark.asyncio
+async def test_different_keys_independent(cache_mapper):
+    """(thread_id, internal_id)の組み合わせが独立して管理されること"""
+    await cache_mapper.set_message_id(333, 3, 1000000001)
+    await cache_mapper.set_message_id(333, 4, 1000000002)
+    await cache_mapper.set_message_id(444, 3, 1000000003)
+    assert await cache_mapper.get_message_id(333, 3) == 1000000001
+    assert await cache_mapper.get_message_id(333, 4) == 1000000002
+    assert await cache_mapper.get_message_id(444, 3) == 1000000003
