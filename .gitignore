@@ -170,3 +170,11 @@ uvicorn.log
 *.sqlite3
 .DS_Store
 .vscode/
+
+KNOWLEDGE.md
+TODO.md
+SPEC.md
+PLAN.md
+
+test.png
+test_output/
