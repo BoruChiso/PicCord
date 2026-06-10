@@ -535,11 +535,11 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
 
     if cached_msg is not None:
         print("ALLOK - Using cached images")
-        embed = discord.Embed(color=0x00DD00, title="画像を表示します")
-        embed.add_field(name="画像数", value=f"{len(cached_msg.attachments)}枚")
         async with AsyncStageTimer("view/cache_hit_download_and_send"):
-            cached_files = [await a.to_file() for a in cached_msg.attachments]
-            await ctx.edit_original_response(content=None, embed=embed, attachments=cached_files)
+            embeds = [discord.Embed(color=0x00DD00).set_image(url=a.url) for a in cached_msg.attachments]
+            embeds[0].title = "画像を表示します"
+            embeds[0].add_field(name="画像数", value=f"{len(cached_msg.attachments)}枚")
+            await ctx.edit_original_response(content=None, embeds=embeds)
         total.stop()
         return
 
