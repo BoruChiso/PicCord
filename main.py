@@ -2,7 +2,7 @@ import discord
 import os
 import json
 from io import BytesIO
-from PIL import Image, ImageFilter
+from PIL import Image
 import imagehash
 from dotenv import load_dotenv
 import gc
@@ -192,8 +192,12 @@ class myUploader:
         attachment = msg_in_botroom.attachments[0]
 
         im = file2image(files[0])
-        with StageTimer("upload/gaussianblur_r100"):
-            blur: Image.Image = im.filter(ImageFilter.GaussianBlur(100))
+        with StageTimer("upload/resize_thumbnail"):
+            w, h = im.size
+            block_px = max(16, max(w, h) // 80)
+            blur: Image.Image = im.resize(
+                (max(1, w // block_px), max(1, h // block_px)), Image.Resampling.BOX
+            ).resize((w, h), Image.Resampling.NEAREST)
         with StageTimer("upload/png_encode_blur"):
             blurfile = image2file(blur)
 
@@ -378,10 +382,12 @@ class myButtonforImageView(discord.ui.Button):
         async for m in self.thread.history(oldest_first=True, limit=1):
             file = await m.attachments[0].to_file()
         mycrypter = myCrypter(file2image(file))
-        internal_id = await user_id_mapper.get_or_create_internal_id(interaction.user.id)
-        mycrypter.setChannel([True, False, False, True]).encryptByID(internal_id).setChannel(
-            [False, False, True, True]
-        ).encryptByLabel(interaction.user.name)
+        internal_id = await user_id_mapper.get_or_create_internal_id(
+            interaction.user.id
+        )
+        mycrypter.setChannel([True, False, False, True]).encryptByID(
+            internal_id
+        ).setChannel([False, False, True, True]).encryptByLabel(interaction.user.name)
         encryptedfile = image2file(mycrypter.executeEncryption())
         msg: discord.Message = await self.thread.send(file=encryptedfile)
         await interaction.edit_original_response(content=msg.attachments[0].url)
@@ -539,7 +545,9 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
 
     # キャッシュ確認 O(1)
     async with AsyncStageTimer("view/cache_db_lookup"):
-        cached_message_id = await image_cache_mapper.get_message_id(thread_id, internal_id)
+        cached_message_id = await image_cache_mapper.get_message_id(
+            thread_id, internal_id
+        )
 
     if cached_message_id is not None:
         print("ALLOK - Using cached images")
@@ -565,11 +573,13 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
         with StageTimer(f"view/image_convert_rgba[{i}]"):
             im = file2image(file)
         mycrypter = myCrypter(im)
-        print(f"Encrypting image {i+1}/{len(files)}")
+        print(f"Encrypting image {i + 1}/{len(files)}")
         with StageTimer(f"view/encrypt[{i}]"):
-            mycrypter.setChannel([True, False, False, True]).encryptByID(internal_id).setChannel(
-                [False, False, True, True]
-            ).encryptByLabel(ctx.user.name).encryptByTime()
+            mycrypter.setChannel([True, False, False, True]).encryptByID(
+                internal_id
+            ).setChannel([False, False, True, True]).encryptByLabel(
+                ctx.user.name
+            ).encryptByTime()
             encrypted_im = mycrypter.executeEncryption()
         with StageTimer(f"view/png_encode[{i}]"):
             encrypted_file = image2file(encrypted_im)
@@ -578,7 +588,9 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
 
     # スレッドに保存してユーザーに送信
     async with AsyncStageTimer("view/discord_upload_encrypted"):
-        msg: discord.Message = await thread.send(content=str(internal_id), files=encrypted_files)
+        msg: discord.Message = await thread.send(
+            content=str(internal_id), files=encrypted_files
+        )
 
     await image_cache_mapper.set_message_id(thread_id, internal_id, msg.id)
 
