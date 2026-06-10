@@ -5,6 +5,7 @@ import textwrap
 import datetime
 
 from myImageConcater import concateImage
+from perf import StageTimer
 from constants import (
     MASKBIT_ROW,
     MASKBIT_COLUMN,
@@ -39,15 +40,13 @@ class myCrypter:
         return self
 
     def _encrypt(self, im: Image.Image, im_mask: Image.Image) -> Image.Image:
-        print("crypt")
-        im_data = np.array(im)
-        im_mask_data = np.array(im_mask)
-
-        im_crypted_data = np.where(
-            im_data < 128, im_data + im_mask_data, im_data - im_mask_data
-        )
-
-        im_crypted_data = im_crypted_data.astype("uint8")
+        with StageTimer("crypt/_encrypt_numpy"):
+            im_data = np.array(im)
+            im_mask_data = np.array(im_mask)
+            im_crypted_data = np.where(
+                im_data < 128, im_data + im_mask_data, im_data - im_mask_data
+            )
+            im_crypted_data = im_crypted_data.astype("uint8")
         return Image.fromarray(im_crypted_data, mode="RGBA")
 
     def _decrypt(self, im_en: Image.Image, im_or: Image.Image) -> Image.Image:
@@ -58,75 +57,79 @@ class myCrypter:
         return Image.fromarray(im_decrypted_data, mode="RGBA")
 
     def encryptByID(self, num: int) -> myCrypter:
-        checker_width = int(self.maskImageData.width / MASKBIT_ROW)
-        checker_height = int(self.maskImageData.height / MASKBIT_COLUMN)
+        with StageTimer("crypt/encryptByID_draw"):
+            checker_width = int(self.maskImageData.width / MASKBIT_ROW)
+            checker_height = int(self.maskImageData.height / MASKBIT_COLUMN)
 
-        maskbooleanlist = self._num2bit(num, MASKBIT_LENGTH_NUM)
-        maskbooleanlist = self.addChecksum(maskbooleanlist)
+            maskbooleanlist = self._num2bit(num, MASKBIT_LENGTH_NUM)
+            maskbooleanlist = self.addChecksum(maskbooleanlist)
 
-        for i in range(MASKBIT_COLUMN):
-            for j in range(MASKBIT_ROW):
-                if maskbooleanlist[i * MASKBIT_ROW + j]:
-                    self.draw.rectangle(
-                        (
-                            checker_width * j,
-                            checker_height * i,
-                            checker_width * (j + 1),
-                            checker_height * (i + 1),
-                        ),
-                        fill=(
-                            MASK_COLOR * self.crypt_mode[0],
-                            MASK_COLOR * self.crypt_mode[1],
-                            MASK_COLOR * self.crypt_mode[2],
-                            MASK_COLOR * self.crypt_mode[3],
-                        ),
-                    )
+            for i in range(MASKBIT_COLUMN):
+                for j in range(MASKBIT_ROW):
+                    if maskbooleanlist[i * MASKBIT_ROW + j]:
+                        self.draw.rectangle(
+                            (
+                                checker_width * j,
+                                checker_height * i,
+                                checker_width * (j + 1),
+                                checker_height * (i + 1),
+                            ),
+                            fill=(
+                                MASK_COLOR * self.crypt_mode[0],
+                                MASK_COLOR * self.crypt_mode[1],
+                                MASK_COLOR * self.crypt_mode[2],
+                                MASK_COLOR * self.crypt_mode[3],
+                            ),
+                        )
         return self
 
     def encryptByLabel(self, label: str) -> myCrypter:
-        fontsize = int(min(self.maskImageData.width, self.maskImageData.height) / 15)
-        fontfile = "./data/Arial Bold.ttf"
+        with StageTimer("crypt/encryptByLabel_draw"):
+            fontsize = int(min(self.maskImageData.width, self.maskImageData.height) / 15)
+            fontfile = "./data/Arial Bold.ttf"
 
-        wraplist = textwrap.wrap((label + " ") * 60, 25)
-        fnt = ImageFont.truetype(fontfile, fontsize)
+            wraplist = textwrap.wrap((label + " ") * 60, 25)
+            fnt = ImageFont.truetype(fontfile, fontsize)
 
-        for i, list in enumerate(wraplist):
-            y = i * (fontsize * 1.5) + fontsize
+            for i, list in enumerate(wraplist):
+                y = i * (fontsize * 1.5) + fontsize
+                self.draw.text(
+                    (fontsize, y),
+                    list,
+                    fill=(
+                        MASK_COLOR * self.crypt_mode[0],
+                        MASK_COLOR * self.crypt_mode[1],
+                        MASK_COLOR * self.crypt_mode[2],
+                        MASK_COLOR * self.crypt_mode[3],
+                    ),
+                    font=fnt,
+                )
+
+        return self
+
+    def encryptByTime(self) -> myCrypter:
+        with StageTimer("crypt/encryptByTime_draw"):
+            fontsize = int(min(self.maskImageData.width, self.maskImageData.height) / 30)
+            fontfile = "./data/Arial Bold.ttf"
+            fnt = ImageFont.truetype(fontfile, fontsize)
+            t_delta = datetime.timedelta(hours=9)
+            JST = datetime.timezone(t_delta, "JST")
+            now = datetime.datetime.now(JST)
+            text = now.strftime(r"%Y/%m/%d %H:%M:%S")
+            w, h = self.draw.textbbox(xy=(0, 0), text=text, font=fnt)[2:]
             self.draw.text(
-                (fontsize, y),
-                list,
-                fill=(
-                    MASK_COLOR * self.crypt_mode[0],
-                    MASK_COLOR * self.crypt_mode[1],
-                    MASK_COLOR * self.crypt_mode[2],
-                    MASK_COLOR * self.crypt_mode[3],
-                ),
+                (self.maskImageData.width - w, self.maskImageData.height - h),
+                text,
+                fill=(TEXT_COLOR, TEXT_COLOR, TEXT_COLOR, 0),
                 font=fnt,
             )
 
         return self
 
-    def encryptByTime(self) -> myCrypter:
-        # text = "UMA"
-        fontsize = int(min(self.maskImageData.width, self.maskImageData.height) / 30)
-        fontfile = "./data/Arial Bold.ttf"
-        fnt = ImageFont.truetype(fontfile, fontsize)
-        t_delta = datetime.timedelta(hours=9)
-        JST = datetime.timezone(t_delta, "JST")
-        now = datetime.datetime.now(JST)
-        text = now.strftime(r"%Y/%m/%d %H:%M:%S")
-        w, h = self.draw.textbbox(xy=(0, 0), text=text, font=fnt)[2:]
-        self.draw.text(
-            (self.maskImageData.width - w, self.maskImageData.height - h),
-            text,
-            fill=(TEXT_COLOR, TEXT_COLOR, TEXT_COLOR, 0),
-            font=fnt,
-        )
-
-        return self
-
     def executeEncryption(self) -> Image.Image:
-        return self._encrypt(self.originalImageData, self.maskImageData)
+        with StageTimer("crypt/executeEncryption_total"):
+            result = self._encrypt(self.originalImageData, self.maskImageData)
+        return result
 
     def decrypt(
         self, image_encrypted: Image.Image, image_original: Image.Image

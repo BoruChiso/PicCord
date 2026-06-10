@@ -12,6 +12,7 @@ import asyncpg
 
 from db import UserIdMapper
 from myCrypter import myCrypter
+from perf import StageTimer, AsyncStageTimer, TotalTimer
 from constants import (
     MASKBIT_ROW,
     MASKBIT_COLUMN,
@@ -178,25 +179,22 @@ class myUploader:
                    .setAuthor("AuthorID")
                    .upload([file], parameter={"key": "value"})
         """
-        thread = await self.botroom.create_thread(
-            name=files[0].filename, auto_archive_duration=60
-        )
-        thread_id = thread.id
-        msg_in_botroom = await thread.send(None, files=files)
+        total = TotalTimer("upload")
+        total.start()
+
+        async with AsyncStageTimer("upload/discord_create_thread_and_send"):
+            thread = await self.botroom.create_thread(
+                name=files[0].filename, auto_archive_duration=60
+            )
+            thread_id = thread.id
+            msg_in_botroom = await thread.send(None, files=files)
         attachment = msg_in_botroom.attachments[0]
 
         im = file2image(files[0])
-        # intensity = 30
-        # minlength = 40
-        # if im.width > im.height:
-        #     smallwidth = min(math.ceil(im.width / intensity),minlength)
-        #     imsmall = im.resize((smallwidth, math.ceil(im.height / im.width * smallwidth)))
-        # else:
-        #     smallheight = min(math.ceil(im.height / intensity),minlength)
-        #     imsmall = im.resize((smallheight, math.ceil(im.width / im.height * smallheight)))
-        # blur:Image = imsmall.resize((im.width,im.height),resample=Image.Resampling.NEAREST).filter(ImageFilter.GaussianBlur(100)).point(lambda x:x*0.5)
-        blur: Image.Image = im.filter(ImageFilter.GaussianBlur(100))
-        blurfile = image2file(blur)
+        with StageTimer("upload/gaussianblur_r100"):
+            blur: Image.Image = im.filter(ImageFilter.GaussianBlur(100))
+        with StageTimer("upload/png_encode_blur"):
+            blurfile = image2file(blur)
 
         if parameter:
             custom_id_viewing_dict = parameter.copy()
@@ -234,9 +232,11 @@ class myUploader:
                 custom_id=custom_id_removing,
             )
         )
-        await self.chatroom.send(
-            None, file=blurfile, embed=self.embed1, view=components
-        )
+        async with AsyncStageTimer("upload/discord_send_preview_to_chatroom"):
+            await self.chatroom.send(
+                None, file=blurfile, embed=self.embed1, view=components
+            )
+        total.stop()
 
 
 class myViewforUploadImage(discord.ui.View):
@@ -445,10 +445,12 @@ def file2image(file: discord.File) -> Image.Image:
 
 # @profile
 def image2file(image: Image.Image) -> discord.File:
-    fileio = BytesIO()
-    image.save(fileio, format="png")
-    fileio.seek(0)
-    hash = imagehash.average_hash(image)
+    with StageTimer("image2file/png_encode"):
+        fileio = BytesIO()
+        image.save(fileio, format="png")
+        fileio.seek(0)
+    with StageTimer("image2file/imagehash"):
+        hash = imagehash.average_hash(image)
     file = discord.File(fileio, filename=f"{hash}.png")
     return file
 
@@ -509,25 +511,37 @@ async def on_interaction(ctx: discord.Interaction):
 
 @profile
 async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
+    total = TotalTimer("view")
+    total.start()
+
     await ctx.response.send_message("画像を送信しています...", ephemeral=True)
     thread = client.get_channel(thread_id)
 
     # 元画像を取得
-    async for m in thread.history(oldest_first=True, limit=1):
-        files = [await a.to_file() for a in m.attachments]
+    async with AsyncStageTimer("view/discord_download_original"):
+        async for m in thread.history(oldest_first=True, limit=1):
+            files = [await a.to_file() for a in m.attachments]
 
-    internal_id = await user_id_mapper.get_or_create_internal_id(ctx.user.id)
+    async with AsyncStageTimer("view/db_lookup"):
+        internal_id = await user_id_mapper.get_or_create_internal_id(ctx.user.id)
 
     # 既にキャッシュがあるかチェック
-    async for m in thread.history(limit=None):
-        if m.content == str(ctx.user.id):
-            print("ALLOK - Using cached images")
-            # キャッシュがある場合は既存の添付ファイルを再送信
-            embed = discord.Embed(color=0x00DD00, title="画像を表示します")
-            embed.add_field(name="画像数", value=f"{len(m.attachments)}枚")
-            cached_files = [await a.to_file() for a in m.attachments]
+    async with AsyncStageTimer("view/cache_history_scan"):
+        cached_msg = None
+        async for m in thread.history(limit=None):
+            if m.content == str(ctx.user.id):
+                cached_msg = m
+                break
+
+    if cached_msg is not None:
+        print("ALLOK - Using cached images")
+        embed = discord.Embed(color=0x00DD00, title="画像を表示します")
+        embed.add_field(name="画像数", value=f"{len(cached_msg.attachments)}枚")
+        async with AsyncStageTimer("view/cache_hit_download_and_send"):
+            cached_files = [await a.to_file() for a in cached_msg.attachments]
             await ctx.edit_original_response(content=None, embed=embed, attachments=cached_files)
-            return
+        total.stop()
+        return
 
     # キャッシュがない場合は暗号化して送信
     embed = discord.Embed(color=0x00DD00, title="画像を表示します")
@@ -536,25 +550,32 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
 
     encrypted_files = []
     for i, file in enumerate(files):
-        mycrypter = myCrypter(file2image(file))
+        with StageTimer(f"view/image_convert_rgba[{i}]"):
+            im = file2image(file)
+        mycrypter = myCrypter(im)
         print(f"Encrypting image {i+1}/{len(files)}")
-        mycrypter.setChannel([True, False, False, True]).encryptByID(internal_id).setChannel(
-            [False, False, True, True]
-        ).encryptByLabel(ctx.user.name).encryptByTime()
-        encrypted_file = image2file(mycrypter.executeEncryption())
+        with StageTimer(f"view/encrypt[{i}]"):
+            mycrypter.setChannel([True, False, False, True]).encryptByID(internal_id).setChannel(
+                [False, False, True, True]
+            ).encryptByLabel(ctx.user.name).encryptByTime()
+            encrypted_im = mycrypter.executeEncryption()
+        with StageTimer(f"view/png_encode[{i}]"):
+            encrypted_file = image2file(encrypted_im)
         encrypted_file.filename = file.filename
         encrypted_files.append(encrypted_file)
 
-    # スレッドに保存
-    msg: discord.Message = await thread.send(content=str(ctx.user.id), files=encrypted_files)
+    # スレッドに保存してユーザーに送信
+    async with AsyncStageTimer("view/discord_upload_encrypted"):
+        msg: discord.Message = await thread.send(content=str(ctx.user.id), files=encrypted_files)
 
-    # ユーザーに送信（Discordの仕様上、一度送信したFileオブジェクトは再利用不可のため再取得）
     embed = discord.Embed(color=0x00DD00, title="画像を表示します")
     embed.add_field(name="画像数", value=f"{len(encrypted_files)}枚")
-    cached_files = [await a.to_file() for a in msg.attachments]
-    await ctx.edit_original_response(content=None, embed=embed, attachments=cached_files)
+    async with AsyncStageTimer("view/discord_edit_response"):
+        cached_files = [await a.to_file() for a in msg.attachments]
+        await ctx.edit_original_response(content=None, embed=embed, attachments=cached_files)
 
     print(f"view id->{internal_id}")
+    total.stop()
 
     # メモリ解放
     del encrypted_files
