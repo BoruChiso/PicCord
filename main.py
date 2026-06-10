@@ -447,7 +447,7 @@ def file2image(file: discord.File) -> Image.Image:
 def image2file(image: Image.Image) -> discord.File:
     with StageTimer("image2file/png_encode"):
         fileio = BytesIO()
-        image.save(fileio, format="png")
+        image.save(fileio, format="png", compress_level=1)
         fileio.seek(0)
     with StageTimer("image2file/imagehash"):
         hash = imagehash.average_hash(image)
@@ -571,15 +571,15 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
     embed = discord.Embed(color=0x00DD00, title="画像を表示します")
     embed.add_field(name="画像数", value=f"{len(encrypted_files)}枚")
     async with AsyncStageTimer("view/discord_edit_response"):
-        cached_files = [await a.to_file() for a in msg.attachments]
-        await ctx.edit_original_response(content=None, embed=embed, attachments=cached_files)
+        for f in encrypted_files:
+            f.fp.seek(0)
+        await ctx.edit_original_response(content=None, embed=embed, attachments=encrypted_files)
 
     print(f"view id->{internal_id}")
     total.stop()
 
     # メモリ解放
     del encrypted_files
-    del cached_files
     gc.collect()
 
 
