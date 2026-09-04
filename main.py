@@ -1,6 +1,8 @@
 import discord
 import os
+import sys
 import json
+import asyncio
 from io import BytesIO
 from PIL import Image
 import imagehash
@@ -12,6 +14,7 @@ import asyncpg
 
 from db import UserIdMapper, ImageCacheMapper
 from myCrypter import myCrypter
+from restarter import DailyRestarter
 from perf import StageTimer, AsyncStageTimer, TotalTimer
 from constants import (
     MASKBIT_ROW,
@@ -57,6 +60,7 @@ intents.message_content = True  # message_contentは受け取る
 intents.members = True
 
 client = discord.Client(intents=intents)
+daily_restarter = DailyRestarter(client)
 tree = discord.app_commands.CommandTree(client)
 
 #############
@@ -676,12 +680,16 @@ async def on_ready():
     await image_cache_mapper.init()
     print("DB connected")
     await tree.sync()
+    asyncio.create_task(daily_restarter.start())
     print("ready")
 
 
 # @profile
 def main():
     client.run(TOKEN)
+    # client.close()後にプロセスごと終了。Railwayのrestart policyで再起動させ、
+    # 1日1回の再起動によりメモリリーク等の蓄積をリセットする。
+    sys.exit(0)
 
 
 if __name__ == "__main__":
