@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import asyncio
+from typing import Optional
 from io import BytesIO
 from PIL import Image
 import imagehash
@@ -61,6 +62,7 @@ intents.members = True
 
 client = discord.Client(intents=intents)
 daily_restarter = DailyRestarter(client)
+_restart_task: Optional[asyncio.Task] = None
 tree = discord.app_commands.CommandTree(client)
 
 #############
@@ -671,7 +673,7 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.user):
 # @profile
 @client.event
 async def on_ready():
-    global user_id_mapper, image_cache_mapper
+    global user_id_mapper, image_cache_mapper, _restart_task
     print("ready")
     pool = await asyncpg.create_pool(DATABASE_URL)
     user_id_mapper = UserIdMapper(pool)
@@ -680,7 +682,8 @@ async def on_ready():
     await image_cache_mapper.init()
     print("DB connected")
     await tree.sync()
-    asyncio.create_task(daily_restarter.start())
+    if _restart_task is None:
+        _restart_task = asyncio.create_task(daily_restarter.start())
     print("ready")
 
 
