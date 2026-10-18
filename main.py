@@ -544,7 +544,8 @@ async def processButtonclickImageView(ctx: discord.Interaction, thread_id: int):
     total.start()
 
     await ctx.response.send_message("画像を送信しています...", ephemeral=True)
-    thread = client.get_channel(thread_id)
+    # archive 済スレッドは discord.py のキャッシュから外れ get_channel が None を返すため fetch で補う
+    thread = client.get_channel(thread_id) or await client.fetch_channel(thread_id)
 
     async with AsyncStageTimer("view/db_lookup"):
         internal_id = await user_id_mapper.get_or_create_internal_id(ctx.user.id)
